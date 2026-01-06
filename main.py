@@ -343,7 +343,7 @@ import asyncio
 import json
 
 async def extract_article(session, url):
-    """단일 기사 추출"""
+    # 단일 기사 추출
     try:
         async with session.post(
             "https://news-article-extractor.onrender.com/extract",
@@ -355,7 +355,7 @@ async def extract_article(session, url):
         return {"error": str(e), "url": url}
 
 async def extract_multiple(urls, batch_size=3):
-    """여러 기사를 배치로 처리"""
+    # 여러 기사를 배치로 처리
     async with aiohttp.ClientSession() as session:
         results = []
 
