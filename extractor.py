@@ -258,24 +258,48 @@ class ArticleExtractor:
                     '--disable-setuid-sandbox',
                     '--disable-gpu',
                     '--disable-software-rasterizer',
-                    '--disable-dev-tools'
+                    '--disable-dev-tools',
+                    '--disable-extensions',
+                    '--disable-background-networking',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-breakpad',
+                    '--disable-component-extensions-with-background-pages',
+                    '--disable-features=TranslateUI,BlinkGenPropertyTrees',
+                    '--disable-ipc-flooding-protection',
+                    '--disable-renderer-backgrounding',
+                    '--enable-features=NetworkService,NetworkServiceInProcess',
+                    '--force-color-profile=srgb',
+                    '--hide-scrollbars',
+                    '--metrics-recording-only',
+                    '--mute-audio',
+                    '--no-first-run',
+                    '--disable-web-security',
+                    '--single-process'  # 메모리 절약을 위한 단일 프로세스
                 ]
             )
-            page = await browser.new_page(
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 Safari/537.36"
+
+            try:
+                page = await browser.new_page(
+                    user_agent=(
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/120.0.0.0 Safari/537.36"
+                    )
                 )
-            )
 
-            await page.goto(url, timeout=30000, wait_until="domcontentloaded")
-            await page.wait_for_timeout(2000)
-            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            await page.wait_for_timeout(1000)
+                await page.goto(url, timeout=20000, wait_until="domcontentloaded")
+                await page.wait_for_timeout(1000)
+                # 스크롤은 필요시만 (메모리 절약)
+                try:
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    await page.wait_for_timeout(500)
+                except:
+                    pass
 
-            html = await page.content()
-            await browser.close()
+                html = await page.content()
+            finally:
+                await browser.close()
 
         # Readability로 본문 추출
         soup = BeautifulSoup(html, "lxml")
