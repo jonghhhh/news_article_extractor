@@ -249,7 +249,18 @@ class ArticleExtractor:
         from readability import Document
 
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            # 제한된 환경(Render)에서 Chromium 실행을 위한 설정
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    '--disable-dev-shm-usage',
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-gpu',
+                    '--disable-software-rasterizer',
+                    '--disable-dev-tools'
+                ]
+            )
             page = await browser.new_page(
                 user_agent=(
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
