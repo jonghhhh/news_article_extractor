@@ -49,3 +49,10 @@ data/
 
 # Logs
 *.log
+
+# Temporary files
+nul
+*.tmp
+
+# Reference files
+Dockerfile_참조.txt

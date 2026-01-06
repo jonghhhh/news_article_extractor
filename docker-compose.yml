@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  news-extractor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: news-extractor
+    ports:
+      - "10000:10000"
+    environment:
+      - PORT=10000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:10000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

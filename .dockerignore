@@ -24,22 +24,21 @@ env/
 
 # Documentation
 README.md
-API_GUIDE.md
-EXTRACTION_IMPROVEMENTS.md
 LICENSE
 
-# Old structure
-app/
-static/
-templates/
+# Data
 data/
 
 # Logs
 *.log
 
 # Docker
-Dockerfile.playwright
 docker-compose.yml
 
-# Test files
+# Environment
+.env
+.env.*
+
+# Temporary files
+*.tmp
 nul
