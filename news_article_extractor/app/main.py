@@ -44,8 +44,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize extractor
-extractor = ArticleExtractor(use_playwright=False)
+# Initialize extractor with Playwright fallback enabled
+extractor = ArticleExtractor(use_playwright=True)
 
 # Storage directory for saved results
 STORAGE_DIR = Path("./data")

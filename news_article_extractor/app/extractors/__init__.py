@@ -24,19 +24,20 @@ class ArticleExtractor:
     4. Playwright - Full JS rendering for dynamic sites
     """
     
-    def __init__(self, use_playwright: bool = False):
+    def __init__(self, use_playwright: bool = True):
         """
         Initialize extractor with available methods
-        
+
         Args:
-            use_playwright: Whether to include Playwright in fallback chain
+            use_playwright: Whether to include Playwright in fallback chain (default: True)
         """
+        # Order: Trafilatura (fastest) -> Newspaper -> BS4 -> Playwright (most reliable)
         self.extractors: List[BaseExtractor] = [
             TrafilaturaExtractor(),
             NewspaperExtractor(),
             BS4Extractor(),
         ]
-        
+
         if use_playwright:
             self.extractors.append(PlaywrightExtractor())
     
@@ -96,12 +97,39 @@ class ArticleExtractor:
         }
     
     def _is_valid_extraction(self, data: Dict[str, Any]) -> bool:
-        """Check if extraction result is valid"""
-        # Must have at least title or content
-        has_title = bool(data.get("title"))
-        has_content = bool(data.get("content")) and len(data.get("content", "")) > 100
-        
-        return has_title or has_content
+        """
+        Check if extraction result is valid
+
+        Validation criteria:
+        - Must have both title AND content
+        - Content must be at least 200 characters
+        - Content should not be generic error messages or navigation text
+        """
+        has_title = bool(data.get("title")) and len(data.get("title", "").strip()) > 0
+        content = data.get("content", "").strip()
+
+        # Check content length
+        has_content = bool(content) and len(content) > 200
+
+        # Check for invalid content patterns (common on failed extractions)
+        invalid_patterns = [
+            "기사 섹션 분류 안내",
+            "언론사의 분류를 따르고 있습니다",
+            "페이지를 찾을 수 없습니다",
+            "404",
+            "not found",
+            "접근이 거부되었습니다",
+        ]
+
+        # If content contains only invalid patterns, mark as invalid
+        if has_content:
+            content_lower = content.lower()
+            if any(pattern.lower() in content_lower for pattern in invalid_patterns):
+                # Check if content is ONLY these patterns (short content)
+                if len(content) < 500:
+                    return False
+
+        return has_title and has_content
     
     async def extract_multiple(
         self, 
