@@ -48,15 +48,6 @@ COPY main.py .
 COPY extractor.py .
 
 # ----------------------------------------
-# 5. Playwright 환경 변수 설정
-# ----------------------------------------
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0
-
-# Chromium이 제한된 환경에서 실행되도록 설정
-ENV PLAYWRIGHT_CHROMIUM_ARGS="--disable-dev-shm-usage --no-sandbox --disable-setuid-sandbox --disable-gpu"
-
-# ----------------------------------------
 # 6. 실행 (Render는 PORT 환경 변수 자동 설정)
 # ----------------------------------------
 CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000}
