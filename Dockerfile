@@ -39,7 +39,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 3. Playwright + Chromium
 # ----------------------------------------
 RUN pip install playwright \
- && playwright install chromium --with-deps
+ && playwright install chromium
 
 # ----------------------------------------
 # 4. 앱 코드
