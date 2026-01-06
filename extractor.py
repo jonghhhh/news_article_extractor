@@ -37,11 +37,20 @@ class ArticleExtractor:
             if any(keyword in img_lower for keyword in ['kakao', 'facebook', 'twitter', 'share', 'sns', 'ic-']):
                 continue
 
-            # 매우 작은 이미지 크기 패턴 제외 (예: 1x1, 10x10)
-            size_pattern = re.search(r'(\d+)x(\d+)', img_url)
+            # 배너/썸네일 제외: 가로 세로 비율 확인
+            # 너무 가늘거나 너무 넓은 이미지 제외 (배너 형식)
+            size_pattern = re.search(r'(_ir_)?(\d+)x(\d+)', img_url)
             if size_pattern:
-                width, height = int(size_pattern.group(1)), int(size_pattern.group(2))
-                if width < 100 or height < 100:
+                width, height = int(size_pattern.group(2)), int(size_pattern.group(3))
+                
+                # 최소 크기: 가로세로 모두 300 이상 (기사 본문 이미지 기준)
+                if width < 300 or height < 300:
+                    continue
+                
+                # 가로세로 비율이 너무 극단적이면 제외 (배너: 640x120 등)
+                # 비율이 5:1 이상이거나 1:5 이상이면 배너로 간주
+                ratio = max(width, height) / min(width, height)
+                if ratio > 5:
                     continue
 
             filtered.append(img_url)
