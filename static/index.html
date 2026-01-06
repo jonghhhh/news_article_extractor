@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>뉴스 기사 추출기</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0b;
+            --bg-secondary: #141416;
+            --bg-tertiary: #1c1c1f;
+            --text-primary: #fafafa;
+            --text-secondary: #a1a1aa;
+            --text-muted: #71717a;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --success: #22c55e;
+            --error: #ef4444;
+            --border: #27272a;
+            --border-focus: #3b82f6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'IBM Plex Sans KR', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+            padding-top: 2rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, #fff 0%, #a1a1aa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            font-weight: 300;
+        }
+
+        .input-section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .input-wrapper {
+            flex: 1;
+            position: relative;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 1rem 1.25rem;
+            font-size: 1rem;
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            color: var(--text-primary);
+            transition: all 0.2s ease;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
+        }
+
+        input[type="text"]::placeholder {
+            color: var(--text-muted);
+        }
+
+        .btn {
+            padding: 1rem 2rem;
+            font-size: 1rem;
+            font-weight: 500;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn-primary:disabled {
+            background: var(--bg-tertiary);
+            color: var(--text-muted);
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border);
+            color: var(--text-primary);
+        }
+
+        .options {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .checkbox-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+        }
+
+        .checkbox-wrapper input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+
+        .checkbox-wrapper label {
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .status {
+            display: none;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            font-size: 0.95rem;
+        }
+
+        .status.loading {
+            display: flex;
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            color: var(--accent);
+        }
+
+        .status.success {
+            display: flex;
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            color: var(--success);
+        }
+
+        .status.error {
+            display: flex;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: var(--error);
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid transparent;
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .result-section {
+            display: none;
+        }
+
+        .result-section.active {
+            display: block;
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .result-header h2 {
+            font-size: 1.25rem;
+            font-weight: 500;
+        }
+
+        .result-actions {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        .tab {
+            padding: 0.75rem 1.25rem;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 500;
+            border-radius: 8px 8px 0 0;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+        }
+
+        .tab.active {
+            color: var(--accent);
+            background: var(--bg-secondary);
+            border-bottom: 2px solid var(--accent);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+
+        .card-title {
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.75rem;
+        }
+
+        .card-value {
+            font-size: 1rem;
+            color: var(--text-primary);
+            word-break: break-word;
+        }
+
+        .card-value a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .card-value a:hover {
+            text-decoration: underline;
+        }
+
+        .card-value.content {
+            max-height: 300px;
+            overflow-y: auto;
+            font-size: 0.95rem;
+            line-height: 1.8;
+            white-space: pre-wrap;
+        }
+
+        .card-full {
+            grid-column: 1 / -1;
+        }
+
+        .json-view {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            overflow-x: auto;
+        }
+
+        .json-view pre {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            margin: 0;
+        }
+
+        .json-view .key {
+            color: #93c5fd;
+        }
+
+        .json-view .string {
+            color: #86efac;
+        }
+
+        .json-view .number {
+            color: #fcd34d;
+        }
+
+        .json-view .null {
+            color: var(--text-muted);
+        }
+
+        .image-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .image-item {
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            aspect-ratio: 16/10;
+        }
+
+        .image-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.3s;
+        }
+
+        .image-item:hover img {
+            transform: scale(1.05);
+        }
+
+        .methods-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg-tertiary);
+            border-radius: 20px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .methods-badge .method {
+            padding: 0.25rem 0.5rem;
+            background: var(--accent);
+            color: white;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        footer {
+            text-align: center;
+            padding: 3rem 0;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        footer a {
+            color: var(--text-secondary);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            color: var(--accent);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            h1 {
+                font-size: 1.75rem;
+            }
+
+            .input-group {
+                flex-direction: column;
+            }
+
+            .options {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+
+            .result-header {
+                flex-direction: column;
+                gap: 1rem;
+                align-items: flex-start;
+            }
+
+            .tabs {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📰 뉴스 기사 추출기</h1>
+            <p class="subtitle">URL을 입력하면 기사의 모든 정보를 자동으로 추출합니다</p>
+        </header>
+
+        <section class="input-section">
+            <div class="input-group">
+                <div class="input-wrapper">
+                    <input 
+                        type="text" 
+                        id="urlInput" 
+                        placeholder="https://news.example.com/article/12345"
+                        autofocus
+                    >
+                </div>
+                <button class="btn btn-primary" id="extractBtn" onclick="extractArticle()">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    추출하기
+                </button>
+            </div>
+            <div class="options">
+                <div class="checkbox-wrapper">
+                    <input type="checkbox" id="useJs">
+                    <label for="useJs">JavaScript 렌더링 사용 (동적 사이트용, 느림)</label>
+                </div>
+                <div class="methods-badge">
+                    추출 순서: 
+                    <span class="method">Trafilatura</span>
+                    <span class="method">Newspaper3k</span>
+                    <span class="method">BeautifulSoup</span>
+                </div>
+            </div>
+        </section>
+
+        <div class="status" id="status">
+            <div class="spinner"></div>
+            <span id="statusText">추출 중...</span>
+        </div>
+
+        <section class="result-section" id="resultSection">
+            <div class="result-header">
+                <h2>추출 결과</h2>
+                <div class="result-actions">
+                    <button class="btn btn-secondary" onclick="copyJson()">
+                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                        </svg>
+                        JSON 복사
+                    </button>
+                    <button class="btn btn-secondary" onclick="downloadJson()">
+                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        다운로드
+                    </button>
+                </div>
+            </div>
+
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('overview')">개요</button>
+                <button class="tab" onclick="switchTab('content')">본문</button>
+                <button class="tab" onclick="switchTab('media')">미디어</button>
+                <button class="tab" onclick="switchTab('json')">JSON</button>
+            </div>
+
+            <div class="tab-content active" id="tab-overview">
+                <div class="card-grid" id="overviewCards"></div>
+            </div>
+
+            <div class="tab-content" id="tab-content">
+                <div class="card card-full">
+                    <div class="card-title">기사 본문</div>
+                    <div class="card-value content" id="articleContent"></div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="tab-media">
+                <div class="card card-full">
+                    <div class="card-title">이미지</div>
+                    <div class="image-gallery" id="imageGallery"></div>
+                </div>
+                <div class="card card-full" id="videoCard" style="margin-top: 1.5rem; display: none;">
+                    <div class="card-title">영상</div>
+                    <div id="videoLinks"></div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="tab-json">
+                <div class="json-view">
+                    <pre id="jsonOutput"></pre>
+                </div>
+            </div>
+        </section>
+
+        <footer>
+            <p>
+                Built with FastAPI, Trafilatura, Newspaper3k, BeautifulSoup
+                <br>
+                <a href="/docs">API Documentation</a> · <a href="/redoc">ReDoc</a>
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        let currentData = null;
+
+        async function extractArticle() {
+            const url = document.getElementById('urlInput').value.trim();
+            const useJs = document.getElementById('useJs').checked;
+            
+            if (!url) {
+                showStatus('error', 'URL을 입력해주세요');
+                return;
+            }
+
+            const btn = document.getElementById('extractBtn');
+            btn.disabled = true;
+            showStatus('loading', '기사 추출 중... (최대 30초 소요)');
+            hideResult();
+
+            try {
+                const params = new URLSearchParams({
+                    url: url,
+                    timeout: 30,
+                    use_js: useJs
+                });
+
+                const response = await fetch(`/api/extract?${params}`);
+                const result = await response.json();
+
+                if (result.success) {
+                    currentData = result.data;
+                    showStatus('success', `추출 완료! (사용된 방법: ${result.data.extraction_method})`);
+                    displayResult(result.data, result.methods_tried);
+                } else {
+                    showStatus('error', `추출 실패: ${result.error}`);
+                }
+            } catch (error) {
+                showStatus('error', `오류 발생: ${error.message}`);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function showStatus(type, message) {
+            const status = document.getElementById('status');
+            const statusText = document.getElementById('statusText');
+            status.className = `status ${type}`;
+            statusText.textContent = message;
+        }
+
+        function hideResult() {
+            document.getElementById('resultSection').classList.remove('active');
+        }
+
+        function displayResult(data, methodsTried) {
+            document.getElementById('resultSection').classList.add('active');
+
+            // Overview cards
+            const overviewHtml = `
+                <div class="card">
+                    <div class="card-title">제목</div>
+                    <div class="card-value">${data.title || '-'}</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">발행일</div>
+                    <div class="card-value">${formatDate(data.published_date) || '-'}</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">기자/작성자</div>
+                    <div class="card-value">${data.author || (data.authors ? data.authors.join(', ') : '-')}</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">언론사</div>
+                    <div class="card-value">${data.source_name || data.source_domain || '-'}</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">카테고리</div>
+                    <div class="card-value">${data.category || '-'}</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">태그</div>
+                    <div class="card-value">${data.tags ? data.tags.slice(0, 5).join(', ') : '-'}</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">조회수</div>
+                    <div class="card-value">${data.view_count ? data.view_count.toLocaleString() : '-'}</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">좋아요</div>
+                    <div class="card-value">${data.like_count ? data.like_count.toLocaleString() : '-'}</div>
+                </div>
+                <div class="card card-full">
+                    <div class="card-title">요약</div>
+                    <div class="card-value">${data.summary || '-'}</div>
+                </div>
+                <div class="card card-full">
+                    <div class="card-title">원본 URL</div>
+                    <div class="card-value"><a href="${data.url}" target="_blank">${data.url}</a></div>
+                </div>
+            `;
+            document.getElementById('overviewCards').innerHTML = overviewHtml;
+
+            // Content
+            document.getElementById('articleContent').textContent = data.content || '본문을 추출하지 못했습니다.';
+
+            // Images
+            const imageGallery = document.getElementById('imageGallery');
+            const images = data.image_urls || [];
+            if (data.main_image_url && !images.includes(data.main_image_url)) {
+                images.unshift(data.main_image_url);
+            }
+            
+            if (images.length > 0) {
+                imageGallery.innerHTML = images.map(url => `
+                    <div class="image-item">
+                        <a href="${url}" target="_blank">
+                            <img src="${url}" alt="Article image" loading="lazy" onerror="this.parentElement.parentElement.style.display='none'">
+                        </a>
+                    </div>
+                `).join('');
+            } else {
+                imageGallery.innerHTML = '<p style="color: var(--text-muted);">이미지가 없습니다.</p>';
+            }
+
+            // Videos
+            const videoCard = document.getElementById('videoCard');
+            const videoLinks = document.getElementById('videoLinks');
+            const videos = data.video_urls || [];
+            if (data.video_url && !videos.includes(data.video_url)) {
+                videos.unshift(data.video_url);
+            }
+
+            if (videos.length > 0) {
+                videoCard.style.display = 'block';
+                videoLinks.innerHTML = videos.map((url, i) => `
+                    <p><a href="${url}" target="_blank" style="color: var(--accent);">영상 ${i + 1}: ${url}</a></p>
+                `).join('');
+            } else {
+                videoCard.style.display = 'none';
+            }
+
+            // JSON
+            document.getElementById('jsonOutput').innerHTML = syntaxHighlight(JSON.stringify(data, null, 2));
+
+            // Scroll to result
+            document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return null;
+            try {
+                const date = new Date(dateStr);
+                return date.toLocaleString('ko-KR', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            } catch {
+                return dateStr;
+            }
+        }
+
+        function syntaxHighlight(json) {
+            json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+                let cls = 'number';
+                if (/^"/.test(match)) {
+                    if (/:$/.test(match)) {
+                        cls = 'key';
+                    } else {
+                        cls = 'string';
+                    }
+                } else if (/true|false/.test(match)) {
+                    cls = 'boolean';
+                } else if (/null/.test(match)) {
+                    cls = 'null';
+                }
+                return '<span class="' + cls + '">' + match + '</span>';
+            });
+        }
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            document.querySelector(`.tab[onclick="switchTab('${tabName}')"]`).classList.add('active');
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+        }
+
+        function copyJson() {
+            if (!currentData) return;
+            navigator.clipboard.writeText(JSON.stringify(currentData, null, 2))
+                .then(() => showStatus('success', 'JSON이 클립보드에 복사되었습니다'))
+                .catch(err => showStatus('error', '복사 실패: ' + err.message));
+        }
+
+        function downloadJson() {
+            if (!currentData) return;
+            const blob = new Blob([JSON.stringify(currentData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `article_${Date.now()}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Enter key handler
+        document.getElementById('urlInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                extractArticle();
+            }
+        });
+    </script>
+</body>
+</html>
