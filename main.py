@@ -609,7 +609,7 @@ print(f"총 {len(df)}개 기사 저장 완료")</div>
                             <div>${data.date || '없음'}</div>
 
                             <div class="label">본문 (${data.text.length}자):</div>
-                            <div style="white-space: pre-wrap;">${data.text.substring(0, 500)}${data.text.length > 500 ? '...' : ''}</div>
+                            <div style="white-space: pre-wrap;">${data.text}</div>
 
                             <div class="label">이미지 (${data.images.length}개):</div>
                             <div>${data.images.slice(0, 3).join('<br>') || '없음'}${data.images.length > 3 ? '<br>...' : ''}</div>
