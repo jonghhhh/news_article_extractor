@@ -8,8 +8,8 @@ from extractor import ArticleExtractor
 
 app = FastAPI(
     title="News Article Extractor",
-    description="뉴스 기사의 본문, 날짜, 이미지, 영상을 추출합니다",
-    version="2.0.0"
+    description="뉴스 기사의 본문, 날짜, 이미지를 추출합니다",
+    version="2.1.0"
 )
 
 
@@ -23,7 +23,6 @@ class ExtractResponse(BaseModel):
     text: str
     date: str
     images: List[str]
-    videos: List[str]
     method: str
 
 
@@ -138,6 +137,8 @@ def read_root():
             overflow-x: auto;
             font-family: 'Courier New', monospace;
             font-size: 14px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
         }
         code {
             background: #263238;
@@ -202,6 +203,14 @@ def read_root():
         .tab-content.active {
             display: block;
         }
+        .tab-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .tab-icon {
+            font-size: 18px;
+        }
     </style>
 </head>
 <body>
@@ -219,10 +228,18 @@ def read_root():
 
     <div class="container">
         <div class="tabs">
-            <button class="tab active" onclick="showTab('usage')">📖 사용법</button>
-            <button class="tab" onclick="showTab('python')">🐍 Python</button>
-            <button class="tab" onclick="showTab('limits')">⚠️ 제약사항</button>
-            <button class="tab" onclick="showTab('api')">🔌 API 문서</button>
+            <button class="tab active" onclick="showTab('usage')">
+                <span class="tab-title"><span class="tab-icon">📖</span> API 사용법</span>
+            </button>
+            <button class="tab" onclick="showTab('python')">
+                <span class="tab-title"><span class="tab-icon">🐍</span> Python 코드</span>
+            </button>
+            <button class="tab" onclick="showTab('limits')">
+                <span class="tab-title"><span class="tab-icon">⚠️</span> 제약사항</span>
+            </button>
+            <button class="tab" onclick="showTab('api')">
+                <span class="tab-title"><span class="tab-icon">🔌</span> API 문서</span>
+            </button>
         </div>
 
         <div id="usage" class="tab-content active">
@@ -243,7 +260,6 @@ def read_root():
   "text": "본문 내용...",
   "date": "2026-01-06",
   "images": ["https://...", "https://..."],
-  "videos": [],
   "method": "trafilatura"
 }</div>
 
@@ -267,11 +283,7 @@ def read_root():
                 </tr>
                 <tr>
                     <td><code>images</code></td>
-                    <td>이미지 URL 목록 (최대 5개, 로고/배너 제외)</td>
-                </tr>
-                <tr>
-                    <td><code>videos</code></td>
-                    <td>영상 URL 목록 (최대 3개)</td>
+                    <td>이미지 URL 목록 (최대 5개, 로고/배너/GIF 제외)</td>
                 </tr>
                 <tr>
                     <td><code>method</code></td>
@@ -500,8 +512,8 @@ print(f"총 {len(df)}개 기사 저장 완료")</div>
             <h3>📦 소스코드</h3>
             <div class="info">
                 <strong>GitHub Repository:</strong><br>
-                <a href="https://github.com/jonghhhh/news_article_extractor" target="_blank" style="color: #4a90e2; text-decoration: none;">
-                    🔗 https://github.com/jonghhhh/news_article_extractor
+                <a href="https://github.com/jonghhhh/news_article_extractor" target="_blank" style="color: #ffffff; text-decoration: underline;">
+                    https://github.com/jonghhhh/news_article_extractor
                 </a>
                 <br><br>
                 • 전체 소스코드 및 Docker 설정 파일 확인 가능<br>
@@ -526,7 +538,6 @@ print(f"총 {len(df)}개 기사 저장 완료")</div>
   "text": "본문...",
   "date": "2026-01-06",
   "images": [...],
-  "videos": [...],
   "method": "trafilatura"
 }</div>
 
@@ -602,9 +613,6 @@ print(f"총 {len(df)}개 기사 저장 완료")</div>
 
                             <div class="label">이미지 (${data.images.length}개):</div>
                             <div>${data.images.slice(0, 3).join('<br>') || '없음'}${data.images.length > 3 ? '<br>...' : ''}</div>
-
-                            <div class="label">영상 (${data.videos.length}개):</div>
-                            <div>${data.videos.join('<br>') || '없음'}</div>
                         </div>
                     `;
                 } else {

@@ -13,18 +13,20 @@ class ArticleExtractor:
 
     @staticmethod
     def _filter_images(images: List[str]) -> List[str]:
-        """로고, 배너, 작은 이미지 필터링"""
+        """로고, 배너, 작은 이미지 필터링 (실제 기사 이미지만 추출)"""
+        import re
         filtered = []
         exclude_patterns = [
             '/logo', '_logo', 'logo_', '/icon', '/btn_', '/banner/', '/ad_', '/ads/',
-            '/thumb', '/profile', '/avatar', '/emoji', '/symbol', 'office_logo'
+            '/thumb', '/profile', '/avatar', '/emoji', '/symbol', 'office_logo',
+            'default', 'placeholder', 'no_image', 'noimage', 'mannerbot', 'people_default'
         ]
 
         for img_url in images:
             img_lower = img_url.lower()
 
-            # SVG 파일 제외 (대부분 아이콘/로고)
-            if img_url.endswith('.svg'):
+            # SVG/GIF 파일 제외 (대부분 아이콘/로고/애니메이션)
+            if img_url.endswith(('.svg', '.gif')):
                 continue
 
             # 제외 패턴 체크
@@ -32,47 +34,20 @@ class ArticleExtractor:
                 continue
 
             # 파일명에 특정 키워드 있으면 제외
-            if any(keyword in img_lower for keyword in ['kakao', 'facebook', 'twitter', 'share', 'sns']):
+            if any(keyword in img_lower for keyword in ['kakao', 'facebook', 'twitter', 'share', 'sns', 'ic-']):
                 continue
+
+            # 매우 작은 이미지 크기 패턴 제외 (예: 1x1, 10x10)
+            size_pattern = re.search(r'(\d+)x(\d+)', img_url)
+            if size_pattern:
+                width, height = int(size_pattern.group(1)), int(size_pattern.group(2))
+                if width < 100 or height < 100:
+                    continue
 
             filtered.append(img_url)
 
         return filtered
 
-    @staticmethod
-    def _filter_videos(videos: List[str]) -> List[str]:
-        """추적 스크립트, about:blank 등 의미없는 영상 필터링"""
-        filtered = []
-        exclude_domains = [
-            'googletagmanager.com', 'google-analytics.com',
-            'doubleclick.net', 'facebook.com/tr', 'analytics'
-        ]
-
-        for video_url in videos:
-            video_lower = video_url.lower()
-
-            # about:blank 제외
-            if video_url == 'about:blank' or not video_url.strip():
-                continue
-
-            # 추적 도메인 제외
-            if any(domain in video_lower for domain in exclude_domains):
-                continue
-
-            # 유효한 비디오 URL만 포함
-            valid_video = (
-                'youtube.com/embed' in video_lower or
-                'youtube.com/watch' in video_lower or
-                'youtu.be/' in video_lower or
-                'vimeo.com/video' in video_lower or
-                'vimeo.com/' in video_lower or
-                video_url.endswith(('.mp4', '.webm', '.ogg', '.m3u8'))
-            )
-
-            if valid_video:
-                filtered.append(video_url)
-
-        return filtered
 
     @staticmethod
     def _extract_date(soup, url: str, metadata=None) -> str:
@@ -136,7 +111,6 @@ class ArticleExtractor:
                 "text": str,
                 "date": str,
                 "images": List[str],
-                "videos": List[str],
                 "method": str  # 사용된 추출 방법
             }
         """
@@ -187,7 +161,7 @@ class ArticleExtractor:
         # 메타데이터 추출
         metadata = trafilatura.extract_metadata(downloaded)
 
-        # 이미지/비디오 추출
+        # 이미지 추출
         from bs4 import BeautifulSoup
         soup = BeautifulSoup(downloaded, 'html.parser')
 
@@ -197,15 +171,8 @@ class ArticleExtractor:
             if src and src.startswith('http'):
                 images.append(src)
 
-        videos = []
-        for video in soup.find_all(['video', 'iframe']):
-            src = video.get('src')
-            if src:
-                videos.append(src)
-
         # 필터링 적용
         images = ArticleExtractor._filter_images(images)
-        videos = ArticleExtractor._filter_videos(videos)
 
         # 날짜 추출
         date = ArticleExtractor._extract_date(soup, url, metadata)
@@ -215,8 +182,7 @@ class ArticleExtractor:
             "title": metadata.title if metadata else "",
             "text": text or "",
             "date": date,
-            "images": images[:5],  # 최대 5개
-            "videos": videos[:3]   # 최대 3개
+            "images": images[:5]  # 최대 5개
         }
 
     @staticmethod
@@ -226,9 +192,8 @@ class ArticleExtractor:
         article.download()
         article.parse()
 
-        # 이미지/비디오 필터링
+        # 이미지 필터링
         images = ArticleExtractor._filter_images(list(article.images))
-        videos = ArticleExtractor._filter_videos(list(article.movies))
 
         # 날짜 처리
         date = article.publish_date.isoformat() if article.publish_date else ""
@@ -238,8 +203,7 @@ class ArticleExtractor:
             "title": article.title,
             "text": article.text,
             "date": date,
-            "images": images[:5],
-            "videos": videos[:3]
+            "images": images[:5]
         }
 
     @staticmethod
@@ -338,16 +302,8 @@ class ArticleExtractor:
             if src and src.startswith('http'):
                 images.append(src)
 
-        # 비디오 추출
-        videos = []
-        for video in soup.find_all(['video', 'iframe']):
-            src = video.get('src')
-            if src:
-                videos.append(src)
-
         # 필터링 적용
         images = ArticleExtractor._filter_images(images)
-        videos = ArticleExtractor._filter_videos(videos)
 
         # 날짜 추출 (개선된 메서드 사용)
         date = ArticleExtractor._extract_date(soup, url)
@@ -360,8 +316,7 @@ class ArticleExtractor:
             "title": title,
             "text": text,
             "date": date,
-            "images": images[:5],
-            "videos": videos[:3]
+            "images": images[:5]
         }
 
     @staticmethod
