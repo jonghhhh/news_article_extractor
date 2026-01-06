@@ -478,12 +478,12 @@ print(f"총 {len(df)}개 기사 저장 완료")</div>
 
             <h3>🚫 대량 처리 제약</h3>
             <div class="info">
-                <strong>1000개 기사 처리 시:</strong><br>
-                • 순차 처리: 약 7-8시간 소요<br>
+                <strong>대량 기사 처리 시 주의사항:</strong><br>
+                • Render 무료/저가 플랜에서는 처리 속도 제한이 있습니다<br>
                 • Rate limiting 필수 (2초 간격 권장)<br>
                 • IP 차단 위험 있음<br>
                 <br>
-                <strong>권장:</strong> 로컬에서 Docker로 실행 (1시간 내 처리 가능)
+                <strong>권장:</strong> 로컬에서 Docker로 실행 시 훨씬 빠른 처리 가능
             </div>
 
             <h3>💡 대량 처리 방법</h3>
@@ -496,6 +496,18 @@ print(f"총 {len(df)}개 기사 저장 완료")</div>
                 <li><strong>Rate limiting</strong>: 요청 간 2초 대기</li>
                 <li><strong>재시도 로직</strong>: 실패 시 3번까지 재시도</li>
             </ol>
+
+            <h3>📦 소스코드</h3>
+            <div class="info">
+                <strong>GitHub Repository:</strong><br>
+                <a href="https://github.com/jonghhhh/news_article_extractor" target="_blank" style="color: #4a90e2; text-decoration: none;">
+                    🔗 https://github.com/jonghhhh/news_article_extractor
+                </a>
+                <br><br>
+                • 전체 소스코드 및 Docker 설정 파일 확인 가능<br>
+                • 로컬 실행 방법 및 상세 문서 포함<br>
+                • Issues/PR 환영합니다
+            </div>
         </div>
 
         <div id="api" class="tab-content">
