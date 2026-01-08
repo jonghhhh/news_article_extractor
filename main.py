@@ -8,8 +8,8 @@ from extractor import ArticleExtractor
 
 app = FastAPI(
     title="News Article Extractor",
-    description="뉴스 기사의 본문, 날짜, 이미지를 추출합니다 (v2.2.0: 60-70% 속도 향상, 정확도 대폭 개선)",
-    version="2.2.0"
+    description="뉴스 기사의 본문, 날짜, 이미지를 추출합니다 (v2.2.1: 동기 방식 전환, 한글 인코딩 문제 해결)",
+    version="2.2.1"
 )
 
 
