@@ -1,15 +1,47 @@
 # extractor.py - 뉴스 기사 추출 (trafilatura → newspaper3k → playwright)
 
 import re
+import json
+import requests
 from datetime import datetime
 from typing import Optional, Dict, List
+from collections import OrderedDict
 import trafilatura
 from newspaper import Article
-from playwright.async_api import async_playwright
+from playwright.sync_api import sync_playwright
 
 
 class ArticleExtractor:
     """뉴스 기사 추출기 - 3단계 fallback 전략"""
+
+    @staticmethod
+    def _fetch_with_headers(url: str) -> str:
+        """커스텀 HTTP 헤더로 페이지 다운로드"""
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Accept-Encoding': 'gzip, deflate',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
+        response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+
+        # UTF-8로 직접 디코딩 (인코딩 문제 방지)
+        # response.text 대신 response.content를 UTF-8로 디코딩
+        try:
+            return response.content.decode('utf-8')
+        except UnicodeDecodeError:
+            # UTF-8 실패 시 apparent_encoding 시도
+            if response.apparent_encoding:
+                try:
+                    return response.content.decode(response.apparent_encoding)
+                except:
+                    pass
+            # 최후의 수단: errors='replace'로 디코딩
+            return response.content.decode('utf-8', errors='replace')
 
     @staticmethod
     def _filter_images(images: List[str]) -> List[str]:
@@ -57,6 +89,73 @@ class ArticleExtractor:
 
         return filtered
 
+    @staticmethod
+    def _extract_images_with_priority(soup, url: str) -> List[str]:
+        """우선순위 기반 이미지 추출 (og:image → article 이미지 → 일반 이미지)"""
+        from urllib.parse import urljoin
+        images = []
+
+        # 1순위: og:image 메타태그 (가장 정확한 대표 이미지)
+        og_image = soup.find('meta', property='og:image')
+        if og_image and og_image.get('content'):
+            img_url = og_image.get('content')
+            if img_url.startswith('http'):
+                images.append(img_url)
+            else:
+                images.append(urljoin(url, img_url))
+
+        # 2순위: twitter:image 메타태그
+        tw_image = soup.find('meta', attrs={'name': 'twitter:image'})
+        if tw_image and tw_image.get('content'):
+            img_url = tw_image.get('content')
+            if img_url not in images:
+                if img_url.startswith('http'):
+                    images.append(img_url)
+                else:
+                    images.append(urljoin(url, img_url))
+
+        # 3순위: article 내부 이미지 (한국 뉴스 사이트 패턴)
+        selectors = [
+            'article img[src]',
+            '.article-body img[src]',
+            '.article_body img[src]',
+            '#article img[src]',
+            '#articleBody img[src]',
+            '.news_view img[src]',  # 네이버
+            '.view_content img[src]',  # 다음
+            '.article_view img[src]',  # 일반 뉴스
+        ]
+
+        for selector in selectors:
+            for img in soup.select(selector):
+                src = img.get('src') or img.get('data-src')
+                if src:
+                    if src.startswith('http'):
+                        img_url = src
+                    else:
+                        img_url = urljoin(url, src)
+                    if img_url not in images:
+                        images.append(img_url)
+
+        # 4순위: 일반 img 태그 (fallback, 최대 10개만 수집)
+        if len(images) < 5:
+            for img in soup.find_all('img', src=True, limit=30):
+                src = img.get('src') or img.get('data-src')
+                if src:
+                    if src.startswith('http'):
+                        img_url = src
+                    else:
+                        img_url = urljoin(url, src)
+                    if img_url not in images:
+                        images.append(img_url)
+                        if len(images) >= 10:
+                            break
+
+        # 중복 제거 (순서 유지)
+        images = list(OrderedDict.fromkeys(images))
+
+        # 필터링 적용
+        return ArticleExtractor._filter_images(images)
 
     @staticmethod
     def _extract_date(soup, url: str, metadata=None) -> str:
@@ -104,7 +203,7 @@ class ArticleExtractor:
         return ""
 
     @staticmethod
-    async def extract(url: str) -> Dict:
+    def extract(url: str) -> Dict:
         """
         URL에서 기사 정보를 추출합니다.
 
@@ -113,6 +212,8 @@ class ArticleExtractor:
         2. newspaper3k (중간)
         3. playwright (느림, 확실)
 
+        부분 병합 전략: 각 방법에서 추출된 정보를 누적하여 완성도를 높임
+
         Returns:
             {
                 "url": str,
@@ -120,92 +221,165 @@ class ArticleExtractor:
                 "text": str,
                 "date": str,
                 "images": List[str],
-                "method": str  # 사용된 추출 방법
+                "method": str  # 사용된 추출 방법 (쉼표로 구분)
             }
         """
+        result = {
+            "url": url,
+            "title": "",
+            "text": "",
+            "date": "",
+            "images": [],
+            "method": []
+        }
+
         # 1단계: trafilatura 시도
         try:
-            result = await ArticleExtractor._extract_with_trafilatura(url)
-            if result and len(result.get("text", "")) > 100:
-                result["method"] = "trafilatura"
-                return result
-        except Exception as e:
-            print(f"Trafilatura failed: {e}")
+            data = ArticleExtractor._extract_with_trafilatura(url)
+            if data:
+                if data.get("title"):
+                    result["title"] = data["title"]
+                if data.get("text"):
+                    result["text"] = data["text"]
+                if data.get("date"):
+                    result["date"] = data["date"]
+                if data.get("images"):
+                    result["images"].extend(data["images"])
+                result["method"].append("trafilatura")
 
-        # 2단계: newspaper3k 시도
-        try:
-            result = await ArticleExtractor._extract_with_newspaper(url)
-            if result and len(result.get("text", "")) > 100:
-                result["method"] = "newspaper3k"
-                return result
+                # 충분한 정보를 얻었으면 조기 종료
+                if result["title"] and result["text"] and len(result["images"]) >= 1:
+                    result["method"] = ", ".join(result["method"])
+                    result["images"] = list(OrderedDict.fromkeys(result["images"]))[:5]
+                    return result
         except Exception as e:
-            print(f"Newspaper3k failed: {e}")
+            print(f"Trafilatura failed: {str(e)}")
 
-        # 3단계: playwright 시도 (최종)
-        try:
-            result = await ArticleExtractor._extract_with_playwright(url)
-            if result and len(result.get("text", "")) > 100:
-                result["method"] = "playwright"
-                return result
-        except Exception as e:
-            print(f"Playwright failed: {e}")
+        # 2단계: newspaper3k로 부족한 부분 보완
+        if not result["title"] or not result["text"] or not result["images"]:
+            try:
+                data = ArticleExtractor._extract_with_newspaper(url)
+                if data:
+                    if not result["title"] and data.get("title"):
+                        result["title"] = data["title"]
+                    if not result["text"] and data.get("text"):
+                        result["text"] = data["text"]
+                    if not result["date"] and data.get("date"):
+                        result["date"] = data["date"]
+                    if data.get("images"):
+                        result["images"].extend(data["images"])
+                    result["method"].append("newspaper3k")
 
-        raise ValueError("모든 추출 방법 실패: 본문을 찾을 수 없습니다")
+                    # 충분한 정보를 얻었으면 조기 종료
+                    if result["title"] and result["text"] and len(result["images"]) >= 1:
+                        result["method"] = ", ".join(result["method"])
+                        result["images"] = list(OrderedDict.fromkeys(result["images"]))[:5]
+                        return result
+            except Exception as e:
+                print(f"Newspaper3k failed: {str(e)}")
+
+        # 3단계: playwright로 최종 시도
+        if not result["text"]:
+            try:
+                data = ArticleExtractor._extract_with_playwright(url)
+                if data:
+                    if not result["title"] and data.get("title"):
+                        result["title"] = data["title"]
+                    if not result["text"] and data.get("text"):
+                        result["text"] = data["text"]
+                    if not result["date"] and data.get("date"):
+                        result["date"] = data["date"]
+                    if data.get("images"):
+                        result["images"].extend(data["images"])
+                    result["method"].append("playwright")
+            except Exception as e:
+                print(f"Playwright failed: {str(e)}")
+
+        # 최종 결과 정리
+        result["method"] = ", ".join(result["method"]) if result["method"] else "none"
+        result["images"] = list(OrderedDict.fromkeys(result["images"]))[:5]
+
+        # 본문이 없으면 실패
+        if not result["text"] or len(result["text"]) < 100:
+            raise ValueError("모든 추출 방법 실패: 본문을 찾을 수 없습니다")
+
+        return result
 
     @staticmethod
-    async def _extract_with_trafilatura(url: str) -> Dict:
-        """trafilatura로 추출"""
-        downloaded = trafilatura.fetch_url(url)
-        if not downloaded:
+    def _extract_with_trafilatura(url: str) -> Dict:
+        """trafilatura로 추출 (JSON 방식 + 커스텀 헤더)"""
+        from bs4 import BeautifulSoup
+
+        # 커스텀 헤더로 HTML 다운로드
+        html = ArticleExtractor._fetch_with_headers(url)
+        if not html:
             raise ValueError("페이지 다운로드 실패")
 
-        # 본문 추출
-        text = trafilatura.extract(
-            downloaded,
+        # JSON 포맷으로 한 번에 추출 (제목, 본문, 날짜, 이미지 모두 포함)
+        result_json = trafilatura.extract(
+            html,
+            output_format='json',
+            url=url,
             include_comments=False,
             include_tables=False,
-            no_fallback=False
+            include_images=True,
+            include_links=True,
+            no_fallback=False,
+            date_extraction_params={'extensive_search': True}  # 날짜 추출 강화
         )
 
-        # 메타데이터 추출
-        metadata = trafilatura.extract_metadata(downloaded)
+        if not result_json:
+            return None
 
-        # 이미지 추출
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(downloaded, 'html.parser')
+        data = json.loads(result_json)
 
-        images = []
-        for img in soup.find_all('img'):
-            src = img.get('src') or img.get('data-src')
-            if src and src.startswith('http'):
-                images.append(src)
+        # BeautifulSoup으로 이미지 우선순위 추출
+        soup = BeautifulSoup(html, 'html.parser')
+        images = ArticleExtractor._extract_images_with_priority(soup, url)
 
-        # 필터링 적용
-        images = ArticleExtractor._filter_images(images)
+        # Trafilatura가 찾은 이미지도 추가 (있으면)
+        if data.get('image'):
+            if data['image'] not in images:
+                images.insert(0, data['image'])
 
-        # 날짜 추출
-        date = ArticleExtractor._extract_date(soup, url, metadata)
+        # 날짜가 없으면 fallback
+        date = data.get('date') or ArticleExtractor._extract_date(soup, url)
 
         return {
             "url": url,
-            "title": metadata.title if metadata else "",
-            "text": text or "",
+            "title": data.get('title', ''),
+            "text": data.get('text', ''),
             "date": date,
             "images": images[:5]  # 최대 5개
         }
 
     @staticmethod
-    async def _extract_with_newspaper(url: str) -> Dict:
-        """newspaper3k로 추출"""
+    def _extract_with_newspaper(url: str) -> Dict:
+        """newspaper3k로 추출 (HTML 재사용 + 우선순위 이미지)"""
+        from bs4 import BeautifulSoup
+
+        # 커스텀 헤더로 HTML 다운로드 (trafilatura와 동일한 HTML 재사용)
+        html = ArticleExtractor._fetch_with_headers(url)
+
+        # Newspaper3k로 파싱
         article = Article(url, language='ko')
-        article.download()
+        article.set_html(html)  # 다운로드하지 않고 HTML 주입
         article.parse()
 
-        # 이미지 필터링
-        images = ArticleExtractor._filter_images(list(article.images))
+        # 우선순위 기반 이미지 추출
+        soup = BeautifulSoup(html, 'html.parser')
+        images = ArticleExtractor._extract_images_with_priority(soup, url)
+
+        # Newspaper3k가 찾은 top_image도 추가
+        if article.top_image and article.top_image not in images:
+            images.insert(0, article.top_image)
 
         # 날짜 처리
         date = article.publish_date.isoformat() if article.publish_date else ""
+
+        # 날짜가 없으면 fallback
+        if not date:
+            date = ArticleExtractor._extract_date(soup, url)
 
         return {
             "url": url,
@@ -216,63 +390,60 @@ class ArticleExtractor:
         }
 
     @staticmethod
-    async def _extract_with_playwright(url: str) -> Dict:
-        """playwright로 추출 (url_text_extractor 참조)"""
+    def _extract_with_playwright(url: str) -> Dict:
+        """playwright로 추출 (news_text_scraper_1.py 참조)"""
         from bs4 import BeautifulSoup
         from readability import Document
+        import time
+        import os
 
-        async with async_playwright() as p:
-            # 제한된 환경(Render)에서 Chromium 실행을 위한 설정
-            browser = await p.chromium.launch(
-                headless=True,
-                args=[
-                    '--disable-dev-shm-usage',
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
+        with sync_playwright() as p:
+            # Render 환경 감지 (PORT 환경 변수로 감지)
+            is_production = os.getenv('PORT') is not None
+
+            # 기본 args (최소한으로 유지)
+            browser_args = [
+                '--disable-dev-shm-usage',
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+            ]
+
+            # 프로덕션 환경(Render)에서만 추가 최적화
+            if is_production:
+                browser_args.extend([
                     '--disable-gpu',
-                    '--disable-software-rasterizer',
-                    '--disable-dev-tools',
-                    '--disable-extensions',
-                    '--disable-background-networking',
-                    '--disable-background-timer-throttling',
-                    '--disable-backgrounding-occluded-windows',
-                    '--disable-breakpad',
-                    '--disable-component-extensions-with-background-pages',
-                    '--disable-features=TranslateUI,BlinkGenPropertyTrees',
-                    '--disable-ipc-flooding-protection',
-                    '--disable-renderer-backgrounding',
-                    '--enable-features=NetworkService,NetworkServiceInProcess',
-                    '--force-color-profile=srgb',
-                    '--hide-scrollbars',
-                    '--metrics-recording-only',
-                    '--mute-audio',
-                    '--no-first-run',
-                    '--disable-web-security',
-                    '--single-process'  # 메모리 절약을 위한 단일 프로세스
-                ]
+                    '--single-process',  # 메모리 절약
+                ])
+
+            browser = p.chromium.launch(
+                headless=True,
+                args=browser_args
             )
 
             try:
-                page = await browser.new_page(
-                    user_agent=(
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/120.0.0.0 Safari/537.36"
-                    )
+                # context를 사용하여 설정 관리 (안정성 향상)
+                context = browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    viewport={'width': 1920, 'height': 1080}  # 반응형 렌더링
                 )
+                page = context.new_page()
 
-                await page.goto(url, timeout=20000, wait_until="domcontentloaded")
-                await page.wait_for_timeout(1000)
-                # 스크롤은 필요시만 (메모리 절약)
+                # 타임아웃 30초
+                page.goto(url, timeout=30000, wait_until="domcontentloaded")
+
+                # 동적 로딩 대기
+                time.sleep(2)
+
+                # 스크롤 (필요시)
                 try:
-                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    await page.wait_for_timeout(500)
+                    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    time.sleep(0.5)
                 except:
                     pass
 
-                html = await page.content()
+                html = page.content()
             finally:
-                await browser.close()
+                browser.close()
 
         # Readability로 본문 추출
         soup = BeautifulSoup(html, "lxml")
@@ -304,15 +475,8 @@ class ArticleExtractor:
             text = soup_article.get_text("\n").strip()
             title = doc.title()
 
-        # 이미지 추출
-        images = []
-        for img in soup.find_all('img'):
-            src = img.get('src') or img.get('data-src')
-            if src and src.startswith('http'):
-                images.append(src)
-
-        # 필터링 적용
-        images = ArticleExtractor._filter_images(images)
+        # 우선순위 기반 이미지 추출
+        images = ArticleExtractor._extract_images_with_priority(soup, url)
 
         # 날짜 추출 (개선된 메서드 사용)
         date = ArticleExtractor._extract_date(soup, url)
