@@ -396,101 +396,126 @@ class ArticleExtractor:
         from readability import Document
         import time
         import os
+        import traceback
 
-        with sync_playwright() as p:
-            # Render 환경 감지 (PORT 환경 변수로 감지)
-            is_production = os.getenv('PORT') is not None
+        try:
+            with sync_playwright() as p:
+                # Render 환경 감지 (PORT 환경 변수로 감지)
+                is_production = os.getenv('PORT') is not None
 
-            # 기본 args (최소한으로 유지)
-            browser_args = [
-                '--disable-dev-shm-usage',
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-            ]
+                # Render 환경에 최적화된 Chromium 옵션 (필수)
+                browser_args = [
+                    '--no-sandbox',  # 필수: Render 환경에서 sandbox 불가
+                    '--disable-setuid-sandbox',  # 필수: 권한 문제 회피
+                    '--disable-dev-shm-usage',  # 필수: /dev/shm 제한 회피
+                    '--disable-gpu',  # GPU 비활성화
+                    '--disable-software-rasterizer',  # SW 렌더러 비활성화
+                    '--disable-features=IsolateOrigins,site-per-process',  # 격리 기능 비활성화
+                ]
 
-            # 프로덕션 환경(Render)에서만 추가 최적화
-            if is_production:
-                browser_args.extend([
-                    '--disable-gpu',
-                    '--single-process',  # 메모리 절약
-                ])
+                # 프로덕션 환경(Render)에서만 추가 최적화
+                if is_production:
+                    browser_args.extend([
+                        '--single-process',  # 메모리 절약
+                        '--no-zygote',  # zygote 프로세스 비활성화
+                        '--disable-accelerated-2d-canvas',  # 2D 캔버스 가속 비활성화
+                        '--disable-background-timer-throttling',
+                    ])
+                    print("[Playwright] Running in PRODUCTION mode")
+                else:
+                    print("[Playwright] Running in LOCAL mode")
 
-            browser = p.chromium.launch(
-                headless=True,
-                args=browser_args
-            )
+                print(f"[Playwright] Launching Chromium with {len(browser_args)} args")
 
-            try:
-                # context를 사용하여 설정 관리 (안정성 향상)
-                context = browser.new_context(
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    viewport={'width': 1920, 'height': 1080}  # 반응형 렌더링
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=browser_args
                 )
-                page = context.new_page()
+                print("[Playwright] Chromium launched successfully")
 
-                # 타임아웃 30초
-                page.goto(url, timeout=30000, wait_until="domcontentloaded")
-
-                # 동적 로딩 대기
-                time.sleep(2)
-
-                # 스크롤 (필요시)
                 try:
-                    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    time.sleep(0.5)
-                except:
-                    pass
+                    # context를 사용하여 설정 관리 (안정성 향상)
+                    print(f"[Playwright] Creating browser context for: {url}")
+                    context = browser.new_context(
+                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                        viewport={'width': 1920, 'height': 1080}  # 반응형 렌더링
+                    )
+                    page = context.new_page()
 
-                html = page.content()
-            finally:
-                browser.close()
+                    # 타임아웃 30초
+                    print(f"[Playwright] Navigating to {url}")
+                    page.goto(url, timeout=30000, wait_until="domcontentloaded")
+                    print("[Playwright] Page loaded successfully")
 
-        # Readability로 본문 추출
-        soup = BeautifulSoup(html, "lxml")
+                    # 동적 로딩 대기
+                    time.sleep(2)
 
-        # 네이버 뉴스 특별 처리
-        text = ""
-        title = ""
-        if "naver.com" in url:
-            article_elem = soup.select_one("#dic_area")
-            title_elem = soup.select_one("h2.media_end_head_headline, h1")
+                    # 스크롤 (필요시)
+                    try:
+                        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                        time.sleep(0.5)
+                    except Exception as scroll_error:
+                        print(f"[Playwright] Scroll error (non-critical): {str(scroll_error)}")
 
-            if article_elem:
-                for tag in article_elem(["script", "style", "noscript"]):
+                    html = page.content()
+                    print(f"[Playwright] HTML extracted: {len(html)} bytes")
+                finally:
+                    browser.close()
+                    print("[Playwright] Browser closed")
+
+            # Readability로 본문 추출
+            soup = BeautifulSoup(html, "lxml")
+
+            # 네이버 뉴스 특별 처리
+            text = ""
+            title = ""
+            if "naver.com" in url:
+                article_elem = soup.select_one("#dic_area")
+                title_elem = soup.select_one("h2.media_end_head_headline, h1")
+
+                if article_elem:
+                    for tag in article_elem(["script", "style", "noscript"]):
+                        tag.decompose()
+                    text = article_elem.get_text("\n").strip()
+
+                if title_elem:
+                    title = title_elem.get_text().strip()
+
+            # Readability fallback
+            if not text or len(text) < 100:
+                doc = Document(html)
+                article_html = doc.summary(html_partial=True)
+                soup_article = BeautifulSoup(article_html, "lxml")
+
+                for tag in soup_article(["script", "style", "noscript"]):
                     tag.decompose()
-                text = article_elem.get_text("\n").strip()
 
-            if title_elem:
-                title = title_elem.get_text().strip()
+                text = soup_article.get_text("\n").strip()
+                title = doc.title()
 
-        # Readability fallback
-        if not text or len(text) < 100:
-            doc = Document(html)
-            article_html = doc.summary(html_partial=True)
-            soup_article = BeautifulSoup(article_html, "lxml")
+            # 우선순위 기반 이미지 추출
+            images = ArticleExtractor._extract_images_with_priority(soup, url)
 
-            for tag in soup_article(["script", "style", "noscript"]):
-                tag.decompose()
+            # 날짜 추출 (개선된 메서드 사용)
+            date = ArticleExtractor._extract_date(soup, url)
 
-            text = soup_article.get_text("\n").strip()
-            title = doc.title()
+            # 텍스트 정제
+            text = ArticleExtractor._clean_text(text)
 
-        # 우선순위 기반 이미지 추출
-        images = ArticleExtractor._extract_images_with_priority(soup, url)
+            return {
+                "url": url,
+                "title": title,
+                "text": text,
+                "date": date,
+                "images": images[:5]
+            }
 
-        # 날짜 추출 (개선된 메서드 사용)
-        date = ArticleExtractor._extract_date(soup, url)
-
-        # 텍스트 정제
-        text = ArticleExtractor._clean_text(text)
-
-        return {
-            "url": url,
-            "title": title,
-            "text": text,
-            "date": date,
-            "images": images[:5]
-        }
+        except Exception as e:
+            print(f"[Playwright] ERROR: Extraction failed for {url}")
+            print(f"[Playwright] Error: {str(e)}")
+            print(f"[Playwright] Traceback:")
+            traceback.print_exc()
+            raise
 
     @staticmethod
     def _clean_text(text: str) -> str:
