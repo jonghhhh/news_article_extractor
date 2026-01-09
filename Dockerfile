@@ -1,49 +1,16 @@
-FROM python:3.11-slim
-
-# ----------------------------------------
-# 1. Playwright에 필요한 시스템 라이브러리
-# ----------------------------------------
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    fonts-liberation \
-    fonts-noto-color-emoji \
-    fonts-unifont \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcairo2 \
-    libcups2 \
-    libdbus-1-3 \
-    libdrm2 \
-    libgbm1 \
-    libnspr4 \
-    libnss3 \
-    libpango-1.0-0 \
-    libx11-xcb1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxkbcommon0 \
-    libxrandr2 \
-    libxshmfence1 \
-    xdg-utils \
-    wget \
-    --no-install-recommends \
- && rm -rf /var/lib/apt/lists/*
+FROM mcr.microsoft.com/playwright/python:v1.41.0-jammy
 
 WORKDIR /app
 
 # ----------------------------------------
-# 2. Python 패키지
+# 1. Python 패키지 설치
 # ----------------------------------------
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# ----------------------------------------
-# 3. Playwright + Chromium
-# ----------------------------------------
-RUN pip install playwright \
- && playwright install chromium
+# Playwright는 이미 베이스 이미지에 설치되어 있으므로
+# requirements.txt에서 playwright 버전만 맞춰주면 됨
+# Chromium도 이미 설치되어 있음
 
 # ----------------------------------------
 # 4. 앱 코드
